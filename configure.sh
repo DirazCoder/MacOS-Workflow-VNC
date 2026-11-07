@@ -30,6 +30,12 @@ for service in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePost
 done
 sudo killall tccd || true
 
+#the console session belongs to runner, not vncuser, so VNC as vncuser attaches to an empty session (black screen); give runner the same password to log in as it
+sudo dscl . -passwd /Users/runner "$1" || echo "setting runner password failed"
+
+#menu extra on, as in https://gist.github.com/paulz/94d8aea91ce28929efb0893ff86d1eed
+sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -clientopts -setmenuextra -menuextra yes
+
 #Start VNC/reset changes
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
@@ -39,3 +45,7 @@ brew install tailscale
 sudo tailscaled --tun=userspace-networking > /tmp/tailscaled.log 2>&1 &
 sleep 3
 sudo tailscale up --authkey="$3" --hostname=gh-mac
+
+#VM display mode; the gist above sets it before connecting
+vmres="/Library/Application Support/VMware Tools/vmware-resolutionSet"
+if [ -x "$vmres" ]; then "$vmres" 1920 1080 || echo "resolution set failed"; else echo "vmware-resolutionSet not found"; fi
