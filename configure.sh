@@ -25,6 +25,8 @@ echo $2 | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
 
-#ngrok now wants a card on file for TCP; bore.pub needs no account
-brew install bore-cli
-nohup bore local 5900 --to bore.pub > /tmp/bore.log 2>&1 &
+#tailscale instead of a public relay: bore.pub wasn't reachable, and this keeps VNC private
+brew install tailscale
+sudo tailscaled --tun=userspace-networking > /tmp/tailscaled.log 2>&1 &
+sleep 3
+sudo tailscale up --authkey="$3" --hostname=gh-mac
