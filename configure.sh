@@ -30,8 +30,9 @@ for service in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePost
 done
 sudo killall tccd || true
 
-#the console session belongs to runner, not vncuser, so VNC as vncuser attaches to an empty session (black screen); give runner the same password to log in as it
-sudo dscl . -passwd /Users/runner "$1" || echo "setting runner password failed"
+#runner's password is unknown, so dscl asked for the old one (eDSAuthFailed); try an empty old password in case the image left it blank, then root as a fallback (the gist below logs in as root)
+sudo dscl . -passwd /Users/runner "" "$1" || echo "setting runner password failed"
+sudo dscl . -passwd /Users/root "$1" || echo "setting root password failed"
 
 #menu extra on, as in https://gist.github.com/paulz/94d8aea91ce28929efb0893ff86d1eed
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -clientopts -setmenuextra -menuextra yes
@@ -45,7 +46,3 @@ brew install tailscale
 sudo tailscaled --tun=userspace-networking > /tmp/tailscaled.log 2>&1 &
 sleep 3
 sudo tailscale up --authkey="$3" --hostname=gh-mac
-
-#VM display mode; the gist above sets it before connecting
-vmres="/Library/Application Support/VMware Tools/vmware-resolutionSet"
-if [ -x "$vmres" ]; then "$vmres" 1920 1080 || echo "resolution set failed"; else echo "vmware-resolutionSet not found"; fi
