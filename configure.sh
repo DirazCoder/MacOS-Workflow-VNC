@@ -18,6 +18,12 @@ sudo createhomedir -c -u vncuser > /dev/null
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -deactivate -stop || echo "ARDAgent was not running"
 sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 
+#legacy VNC password mode, so viewers like RealVNC skip Apple's own login handshake (the log showed that handshake never finishing, then "Connection reset by peer"); connect with just the password, no username
+sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCLegacyConnectionsEnabled -bool true
+sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
+#VNC password file, hashing trick from http://hints.macworld.com/article.php?story=20071103011608872 (only the first 8 characters count)
+echo "$2" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }; print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt > /dev/null
+
 #the runner image only grants screen capture to bash; SIP is off here, so TCC.db is writable
 tcc_db="/Library/Application Support/com.apple.TCC/TCC.db"
 epoch="$(date +%s)"
