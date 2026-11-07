@@ -14,17 +14,17 @@ jobs:
       env:
         VNC_USER_PASSWORD: ${{ secrets.VNC_USER_PASSWORD }}
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-      run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD"
+        TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+      run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD" "$TS_AUTHKEY"
     - name: VNC address
       run: |
         addr=""
-        for i in $(seq 1 30); do
-          addr=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log 2>/dev/null | head -n 1 || true)
+        for i in $(seq 1 15); do
+          addr=$(sudo tailscale ip -4 2>/dev/null | head -n 1 || true)
           [ -n "$addr" ] && break
           sleep 2
         done
-        echo "--- bore log ---"
-        cat /tmp/bore.log || true
+        sudo tailscale status || true
         echo "you can VNC to... $addr"
         [ -n "$addr" ]
     - name: Setup tmate session
