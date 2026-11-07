@@ -38,7 +38,7 @@ jobs:
         echo "--- screen sharing processes ---"
         ps aux | grep -E 'ARDAgent|screensharingd|loginwindow' | grep -v grep
         echo "--- screen capture permissions ---"
-        sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where service='kTCCServiceScreenCapture'"
+        sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where client like '%RemoteDesktop%' or client like '%ARDAgent%'"
         exit 0
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
