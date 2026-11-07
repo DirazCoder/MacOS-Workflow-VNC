@@ -27,5 +27,18 @@ jobs:
         sudo tailscale status || true
         echo "you can VNC to... $addr"
         [ -n "$addr" ]
+    - name: Diagnose black screen
+      run: |
+        set +e
+        sw_vers
+        echo "console owner: $(stat -f%Su /dev/console)"
+        csrutil status
+        echo "--- listening on 5900 ---"
+        sudo lsof -iTCP:5900 -sTCP:LISTEN
+        echo "--- screen sharing processes ---"
+        ps aux | grep -E 'ARDAgent|screensharingd|loginwindow' | grep -v grep
+        echo "--- screen capture permissions ---"
+        sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where service='kTCCServiceScreenCapture'"
+        exit 0
     - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v2
+      uses: mxschmitt/action-tmate@v3
