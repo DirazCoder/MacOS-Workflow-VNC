@@ -1,6 +1,11 @@
 name: mac
-on: 
+on:
   workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'Direct download link to your .7z (GitHub release asset)'
+        required: false
+        default: ''
 defaults:
   run:
     shell: bash
@@ -16,6 +21,25 @@ jobs:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
         TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD" "$TS_AUTHKEY"
+    - name: Put the app on the desktop
+      env:
+        APP_URL: ${{ inputs.app_url }}
+      run: |
+        if [ -z "$APP_URL" ]; then echo "no app_url given, skipping"; exit 0; fi
+        brew install sevenzip
+        desk=/Users/vncuser/Desktop
+        sudo mkdir -p "$desk"
+        curl -fL "$APP_URL" -o /tmp/app.7z
+        sudo 7zz x /tmp/app.7z -o"$desk" -y
+        sudo xattr -cr "$desk" || true
+        # arm64 code must be signed to run; ad-hoc sign any .app that fails verification
+        for app in "$desk"/*.app; do
+          [ -e "$app" ] || continue
+          sudo chmod -R +x "$app/Contents/MacOS"
+          codesign --verify --deep "$app" 2>/dev/null || sudo codesign --force --deep --sign - "$app"
+        done
+        sudo chown -R vncuser:staff "$desk"
+        ls -la "$desk"
     - name: VNC address
       run: |
         addr=""
