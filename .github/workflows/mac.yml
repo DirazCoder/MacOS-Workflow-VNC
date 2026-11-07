@@ -40,7 +40,7 @@ jobs:
           codesign --verify --deep "$app" 2>/dev/null || sudo codesign --force --deep --sign - "$app"
         done
         sudo chown -R vncuser:staff "$desk"
-        ls -la "$desk"
+        sudo ls -la "$desk"
     - name: VNC address
       run: |
         addr=""
