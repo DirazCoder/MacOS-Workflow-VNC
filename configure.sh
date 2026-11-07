@@ -21,6 +21,15 @@ sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resourc
 #VNC password - http://hints.macworld.com/article.php?story=20071103011608872
 echo $2 | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }; print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt
 
+#the runner image grants screen capture to bash but not to ARDAgent, which gives a black screen; SIP is off here so TCC.db is writable
+tcc_db="/Library/Application Support/com.apple.TCC/TCC.db"
+ard_app=/System/Library/CoreServices/RemoteManagement/ARDAgent.app
+ard_id=$(defaults read "$ard_app/Contents/Info" CFBundleIdentifier)
+for service in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePostEvent; do
+  sudo sqlite3 "$tcc_db" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, flags) VALUES ('$service', '$ard_id', 0, 2, 4, 1, 0), ('$service', '$ard_app/Contents/MacOS/ARDAgent', 1, 2, 4, 1, 0);" || echo "tcc insert failed for $service"
+done
+sudo killall tccd || true
+
 #Start VNC/reset changes
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
