@@ -17,12 +17,15 @@ jobs:
       run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD"
     - name: VNC address
       run: |
+        addr=""
         for i in $(seq 1 30); do
-          addr=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log | head -n 1)
+          addr=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log 2>/dev/null | head -n 1 || true)
           [ -n "$addr" ] && break
           sleep 2
         done
+        echo "--- bore log ---"
+        cat /tmp/bore.log || true
         echo "you can VNC to... $addr"
-        [ -n "$addr" ] || { cat /tmp/bore.log; exit 1; }
+        [ -n "$addr" ]
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v2
