@@ -36,9 +36,9 @@ jobs:
         echo "--- listening on 5900 ---"
         sudo lsof -iTCP:5900 -sTCP:LISTEN
         echo "--- screen sharing processes ---"
-        ps aux | grep -E 'ARDAgent|screensharingd|loginwindow' | grep -v grep
+        ps aux | grep -E 'ARDAgent|screensharing|loginwindow' | grep -v grep
         echo "--- screen capture permissions ---"
-        sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where client like '%RemoteDesktop%' or client like '%ARDAgent%'"
+        sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where client like '%screensharing%'"
         exit 0
     - name: Display check
       run: |
