@@ -40,5 +40,26 @@ jobs:
         echo "--- screen capture permissions ---"
         sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where client like '%RemoteDesktop%' or client like '%ARDAgent%'"
         exit 0
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+    - name: Display check
+      run: |
+        set +e
+        system_profiler SPDisplaysDataType
+        screencapture -x /tmp/screen.png
+        echo "screencapture exit code: $?"
+        ls -l /tmp/screen.png
+        sips -g pixelWidth -g pixelHeight /tmp/screen.png
+        exit 0
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: screen
+        path: /tmp/screen.png
+        if-no-files-found: ignore
+    - name: ARDAgent log after you connect
+      run: |
+        set +e
+        sleep 180
+        sudo log show --last 4m --style compact --predicate 'process == "ARDAgent" OR process == "screensharingd"' | tail -n 60
+        exit 0
+    - name: Keep the Mac alive
+      run: sleep 7200
