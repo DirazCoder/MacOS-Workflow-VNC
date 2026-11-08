@@ -1,4 +1,5 @@
 name: mac
+run-name: mac (${{ inputs.runner }})
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +23,7 @@ defaults:
 
 jobs:
   build:
+    name: ${{ inputs.runner }}
     runs-on: ${{ inputs.runner }}
     steps:
     - uses: actions/checkout@v2
