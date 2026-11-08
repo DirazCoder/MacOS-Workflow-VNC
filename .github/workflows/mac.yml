@@ -7,13 +7,15 @@ on:
         required: false
         default: ''
       runner:
-        description: 'Runner architecture'
+        description: 'Runner'
         required: false
         default: 'macos-latest'
         type: choice
         options:
           - macos-latest
           - macos-26-intel
+          - windows-11-arm
+          - ubuntu-24.04-arm
 defaults:
   run:
     shell: bash
@@ -24,12 +26,14 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setting the environment up.
+      if: runner.os == 'macOS'
       env:
         VNC_USER_PASSWORD: ${{ secrets.VNC_USER_PASSWORD }}
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
         TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD" "$TS_AUTHKEY"
     - name: Skip Setup Assistant
+      if: runner.os == 'macOS'
       run: |
         set +e
         sudo touch /var/db/.AppleSetupDone
@@ -44,6 +48,7 @@ jobs:
         sudo killall "Setup Assistant" 2>/dev/null
         exit 0
     - name: Put the app on the desktop
+      if: runner.os == 'macOS'
       env:
         APP_URL: ${{ inputs.app_url }}
       run: |
@@ -64,6 +69,7 @@ jobs:
         sudo chown -R vncuser:staff "$desk"
         sudo ls -la "$desk"
     - name: VNC address
+      if: runner.os == 'macOS'
       run: |
         addr=""
         for i in $(seq 1 15); do
@@ -75,7 +81,7 @@ jobs:
         echo "you can VNC to... $addr"
         [ -n "$addr" ]
     - name: Force 1024x768 (Intel only)
-      if: runner.arch == 'X64'
+      if: runner.os == 'macOS' && runner.arch == 'X64'
       run: |
         set +e
         brew install screenresolution
@@ -86,6 +92,7 @@ jobs:
         sudo launchctl asuser "$uid" sudo -u vncuser screenresolution get
         exit 0
     - name: Diagnose black screen
+      if: runner.os == 'macOS'
       run: |
         set +e
         sw_vers
@@ -99,6 +106,7 @@ jobs:
         sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service,client,auth_value from access where client like '%screensharing%'"
         exit 0
     - name: Display check
+      if: runner.os == 'macOS'
       run: |
         set +e
         system_profiler SPDisplaysDataType
@@ -108,16 +116,82 @@ jobs:
         sips -g pixelWidth -g pixelHeight /tmp/screen.png
         exit 0
     - uses: actions/upload-artifact@v4
-      if: always()
+      if: always() && runner.os == 'macOS'
       with:
         name: screen
         path: /tmp/screen.png
         if-no-files-found: ignore
     - name: ARDAgent log after you connect
+      if: runner.os == 'macOS'
       run: |
         set +e
         sleep 180
         sudo log show --last 4m --style compact --predicate 'process == "ARDAgent" OR process == "screensharingd"' | tail -n 60
         exit 0
-    - name: Keep the Mac alive
+    - name: Tailscale + VNC (Ubuntu)
+      if: runner.os == 'Linux'
+      env:
+        VNC_USER_PASSWORD: ${{ secrets.VNC_USER_PASSWORD }}
+        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+      run: |
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 dbus-x11 tigervnc-standalone-server tigervnc-common
+        sudo useradd -m -s /bin/bash vncuser || true
+        echo "vncuser:$VNC_USER_PASSWORD" | sudo chpasswd
+        sudo -u vncuser mkdir -p /home/vncuser/.vnc
+        # VncAuth only reads the first 8 characters
+        echo "$VNC_PASSWORD" | vncpasswd -f | sudo -u vncuser tee /home/vncuser/.vnc/passwd > /dev/null
+        sudo chmod 600 /home/vncuser/.vnc/passwd
+        printf '#!/bin/sh\nexec dbus-launch --exit-with-session startxfce4\n' | sudo -u vncuser tee /home/vncuser/.vnc/xstartup > /dev/null
+        sudo chmod +x /home/vncuser/.vnc/xstartup
+        sudo -u vncuser vncserver :1 -geometry 1024x768 -depth 24 -localhost no -SecurityTypes VncAuth -xstartup /home/vncuser/.vnc/xstartup
+        curl -fsSL https://tailscale.com/install.sh | sh
+        sudo tailscale up --authkey="$TS_AUTHKEY" --hostname=gh-ubuntu-arm
+    - name: VNC address (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        addr=""
+        for i in $(seq 1 15); do
+          addr=$(sudo tailscale ip -4 2>/dev/null | head -n 1 || true)
+          [ -n "$addr" ] && break
+          sleep 2
+        done
+        sudo tailscale status || true
+        sudo ss -ltnp | grep 5901 || true
+        echo "you can VNC to... $addr:5901 (display :1)"
+        [ -n "$addr" ]
+    - name: Tailscale + VNC (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $tmp = $env:RUNNER_TEMP
+        Invoke-WebRequest 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-arm64.msi' -OutFile "$tmp\ts.msi"
+        Start-Process msiexec.exe -ArgumentList "/i `"$tmp\ts.msi`" /quiet /norestart" -Wait
+        & 'C:\Program Files\Tailscale\tailscale.exe' up --authkey=$env:TS_AUTHKEY --hostname=gh-win-arm --unattended
+        # TightVNC is x86, runs fine under Windows-on-ARM emulation; password is capped at 8 characters
+        $pw = $env:VNC_PASSWORD.Substring(0, [Math]::Min(8, $env:VNC_PASSWORD.Length))
+        Invoke-WebRequest 'https://www.tightvnc.com/download/2.8.85/tightvnc-2.8.85-gpl-setup-64bit.msi' -OutFile "$tmp\tvnc.msi"
+        Start-Process msiexec.exe -Wait -ArgumentList "/i `"$tmp\tvnc.msi`" /quiet /norestart ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=$pw SET_USECONTROLAUTHENTICATION=1 VALUE_OF_USECONTROLAUTHENTICATION=1 SET_CONTROLPASSWORD=1 VALUE_OF_CONTROLPASSWORD=$pw"
+        New-NetFirewallRule -DisplayName 'VNC 5900' -Direction Inbound -Protocol TCP -LocalPort 5900 -Action Allow | Out-Null
+        Start-Service tvnserver
+    - name: VNC address (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ts = 'C:\Program Files\Tailscale\tailscale.exe'
+        $addr = ''
+        for ($i = 0; $i -lt 15 -and -not $addr; $i++) {
+          $addr = (& $ts ip -4 2>$null | Select-Object -First 1)
+          if (-not $addr) { Start-Sleep -Seconds 2 }
+        }
+        & $ts status
+        Get-NetTCPConnection -LocalPort 5900 -State Listen -ErrorAction SilentlyContinue
+        Write-Host "you can VNC to... $addr"
+        if (-not $addr) { exit 1 }
+    - name: Keep the runner alive
       run: sleep 7200
