@@ -137,19 +137,52 @@ jobs:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
         TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       run: |
+        # fail in seconds instead of after a 2 minute apt install
+        for v in VNC_PASSWORD TS_AUTHKEY; do
+          [ -n "${!v}" ] || { echo "::error::secret $v is empty or missing"; exit 1; }
+        done
         sudo apt-get update
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 dbus-x11 tigervnc-standalone-server tigervnc-common
         sudo useradd -m -s /bin/bash vncuser || true
-        echo "vncuser:$VNC_USER_PASSWORD" | sudo chpasswd
+        # VNC logs in with VNC_PASSWORD, so the unix password is optional
+        if [ -n "$VNC_USER_PASSWORD" ]; then
+          echo "vncuser:$VNC_USER_PASSWORD" | sudo chpasswd
+        else
+          echo "VNC_USER_PASSWORD is empty, leaving vncuser without a unix password"
+        fi
         sudo -u vncuser mkdir -p /home/vncuser/.vnc
         # VncAuth only reads the first 8 characters
         echo "$VNC_PASSWORD" | vncpasswd -f | sudo -u vncuser tee /home/vncuser/.vnc/passwd > /dev/null
         sudo chmod 600 /home/vncuser/.vnc/passwd
-        printf '#!/bin/sh\nexec dbus-launch --exit-with-session startxfce4\n' | sudo -u vncuser tee /home/vncuser/.vnc/xstartup > /dev/null
+        # own runtime dir + clean session env, otherwise xfconfd can fail to start and XFCE drops to "unable to load a failsafe session"
+        sudo -u vncuser tee /home/vncuser/.vnc/xstartup > /dev/null <<'EOF'
+        #!/bin/sh
+        unset SESSION_MANAGER DBUS_SESSION_BUS_ADDRESS
+        export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+        mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+        export XDG_CONFIG_DIRS=/etc/xdg
+        export XDG_DATA_DIRS=/usr/local/share:/usr/share
+        exec dbus-launch --exit-with-session startxfce4
+        EOF
         sudo chmod +x /home/vncuser/.vnc/xstartup
         sudo -u vncuser vncserver :1 -geometry 1024x768 -depth 24 -localhost no -SecurityTypes VncAuth -xstartup /home/vncuser/.vnc/xstartup
         curl -fsSL https://tailscale.com/install.sh | sh
         sudo tailscale up --authkey="$TS_AUTHKEY" --hostname=gh-ubuntu-arm
+    - name: Put the app on the desktop (Ubuntu)
+      if: runner.os == 'Linux'
+      env:
+        APP_URL: ${{ inputs.app_url }}
+      run: |
+        if [ -z "$APP_URL" ]; then echo "no app_url given, skipping"; exit 0; fi
+        sudo apt-get install -y 7zip
+        desk=/home/vncuser/Desktop
+        sudo mkdir -p "$desk"
+        curl -fL "$APP_URL" -o /tmp/app.7z
+        sudo 7z x /tmp/app.7z -o"$desk" -y
+        # archives made on Windows lose the exec bit, so mark every ELF binary executable
+        sudo find "$desk" -type f -exec sh -c 'head -c4 "$1" | grep -q ELF && chmod +x "$1"' _ {} \;
+        sudo chown -R vncuser:vncuser "$desk"
+        sudo ls -la "$desk"
     - name: VNC address (Ubuntu)
       if: runner.os == 'Linux'
       run: |
@@ -161,6 +194,7 @@ jobs:
         done
         sudo tailscale status || true
         sudo ss -ltnp | grep 5901 || true
+        sudo tail -n 30 /home/vncuser/.vnc/*.log || true
         echo "you can VNC to... $addr:5901 (display :1)"
         [ -n "$addr" ]
     - name: Tailscale + VNC (Windows)
@@ -181,6 +215,22 @@ jobs:
         Start-Process msiexec.exe -Wait -ArgumentList "/i `"$tmp\tvnc.msi`" /quiet /norestart ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=$pw SET_USECONTROLAUTHENTICATION=1 VALUE_OF_USECONTROLAUTHENTICATION=1 SET_CONTROLPASSWORD=1 VALUE_OF_CONTROLPASSWORD=$pw"
         New-NetFirewallRule -DisplayName 'VNC 5900' -Direction Inbound -Protocol TCP -LocalPort 5900 -Action Allow | Out-Null
         Start-Service tvnserver
+    - name: Put the app on the desktop (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        APP_URL: ${{ inputs.app_url }}
+      run: |
+        if (-not $env:APP_URL) { Write-Host 'no app_url given, skipping'; exit 0 }
+        $ErrorActionPreference = 'Stop'
+        $tmp = $env:RUNNER_TEMP
+        # 7zr.exe is the standalone .7z-only extractor, so it doesn't matter whether the image ships 7-Zip
+        Invoke-WebRequest 'https://www.7-zip.org/a/7zr.exe' -OutFile "$tmp\7zr.exe"
+        Invoke-WebRequest $env:APP_URL -OutFile "$tmp\app.7z"
+        $desk = 'C:\Users\Public\Desktop'
+        & "$tmp\7zr.exe" x "$tmp\app.7z" "-o$desk" -y
+        if ($LASTEXITCODE -ne 0) { throw "7zr exited with $LASTEXITCODE" }
+        Get-ChildItem $desk | Select-Object Name, Length
     - name: VNC address (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
