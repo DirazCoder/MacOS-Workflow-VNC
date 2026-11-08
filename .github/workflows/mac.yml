@@ -60,6 +60,17 @@ jobs:
         sudo tailscale status || true
         echo "you can VNC to... $addr"
         [ -n "$addr" ]
+    - name: Force 1024x768 (Intel only)
+      if: runner.arch == 'X64'
+      run: |
+        set +e
+        brew install screenresolution
+        uid=$(id -u vncuser)
+        # CoreGraphics tools only see the display from inside vncuser's GUI session
+        sudo launchctl asuser "$uid" sudo -u vncuser screenresolution list
+        sudo launchctl asuser "$uid" sudo -u vncuser screenresolution set 1024x768x32
+        sudo launchctl asuser "$uid" sudo -u vncuser screenresolution get
+        exit 0
     - name: Diagnose black screen
       run: |
         set +e
