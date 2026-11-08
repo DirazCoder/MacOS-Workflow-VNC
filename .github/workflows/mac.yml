@@ -154,10 +154,11 @@ jobs:
         # VncAuth only reads the first 8 characters
         echo "$VNC_PASSWORD" | vncpasswd -f | sudo -u vncuser tee /home/vncuser/.vnc/passwd > /dev/null
         sudo chmod 600 /home/vncuser/.vnc/passwd
-        # own runtime dir + clean session env, otherwise xfconfd can fail to start and XFCE drops to "unable to load a failsafe session"
+        # the runner leaks XDG_CONFIG_HOME=/home/runner/.config into the session; vncuser can't write there, so xfconfd dies and XFCE says "unable to load a failsafe session"
         sudo -u vncuser tee /home/vncuser/.vnc/xstartup > /dev/null <<'EOF'
         #!/bin/sh
         unset SESSION_MANAGER DBUS_SESSION_BUS_ADDRESS
+        unset XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
         export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
         mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
         export XDG_CONFIG_DIRS=/etc/xdg
