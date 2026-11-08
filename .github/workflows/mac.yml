@@ -6,13 +6,21 @@ on:
         description: 'Direct download link to your .7z (GitHub release asset)'
         required: false
         default: ''
+      runner:
+        description: 'Runner architecture'
+        required: false
+        default: 'macos-latest'
+        type: choice
+        options:
+          - macos-latest
+          - macos-26-intel
 defaults:
   run:
     shell: bash
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner }}
     steps:
     - uses: actions/checkout@v2
     - name: Setting the environment up.
