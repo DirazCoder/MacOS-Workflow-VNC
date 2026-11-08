@@ -29,6 +29,20 @@ jobs:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
         TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       run: source configure.sh "$VNC_USER_PASSWORD" "$VNC_PASSWORD" "$TS_AUTHKEY"
+    - name: Skip Setup Assistant
+      run: |
+        set +e
+        sudo touch /var/db/.AppleSetupDone
+        ver=$(sw_vers -productVersion)
+        build=$(sw_vers -buildVersion)
+        for key in DidSeeCloudSetup DidSeePrivacy DidSeeSiriSetup DidSeeAccessibility DidSeeScreenTime DidSeeTouchIDSetup DidSeeApplePaySetup DidSeeActivationLock; do
+          sudo -u vncuser defaults write com.apple.SetupAssistant "$key" -bool true
+        done
+        sudo -u vncuser defaults write com.apple.SetupAssistant LastSeenCloudProductVersion "$ver"
+        sudo -u vncuser defaults write com.apple.SetupAssistant LastSeenBuddyBuildVersion "$build"
+        # already on screen? kill it so it doesn't linger
+        sudo killall "Setup Assistant" 2>/dev/null
+        exit 0
     - name: Put the app on the desktop
       env:
         APP_URL: ${{ inputs.app_url }}
